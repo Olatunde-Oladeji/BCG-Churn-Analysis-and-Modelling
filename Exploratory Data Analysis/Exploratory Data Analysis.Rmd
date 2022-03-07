@@ -1,0 +1,347 @@
+```{r}
+library(tidyverse)
+library(ggthemes)
+library(wesanderson)
+library(scales)
+```
+
+```{r}
+client_df <- read.csv("client_data.csv")
+head(client_df)
+price_df <- read.csv("price_data.csv")
+head(price_df)
+str(client_df)
+str(price_df)
+```
+
+
+```{r}
+#Churn
+churn_df <- select(client_df, churn) %>%
+  group_by(churn) %>%
+  count() %>%
+  ungroup() %>%
+  mutate(pct = n/sum(n)*100, id = "Companies") 
+
+
+churn_df$churn <- as.factor(recode(churn_df$churn,
+       "0" = "Retention",
+       "1" = "Churn"))
+
+ggplot(churn_df, aes(x = id, y = pct, fill = churn)) +
+  geom_bar(position = "stack", stat = "identity") +
+   scale_y_continuous(breaks = seq(0, 100, by = 20)) +
+  geom_text(aes(label=paste0(sprintf("%1.1f", pct),"%")),
+                     position=position_stack(vjust=0.5), colour="white", size = 5) +
+  labs(title = "Churning Status", y = "Company base (%)", fill = "Churn") +
+  xlab(NULL)
+
+#About 10% of the total customers have churned. (This sounds about right)
+```
+
+```{r}
+#Sales Channel
+channel <- client_df %>%
+  select(id, channel_sales, churn) %>%
+  group_by(channel_sales) %>%
+  count(churn) %>%
+  mutate(pct = n/sum(n)*100)
+  
+
+channel$churn <- as.factor(recode(channel$churn,
+                                  "0" = "Retention",
+                                  "1" = "Churn"))
+
+ggplot(channel, aes(x = channel_sales, y = pct, fill = churn)) +
+  geom_bar(position = "stack", stat = "identity") +
+   scale_y_continuous(breaks = seq(0, 100, by = 20)) +
+  geom_text(aes(label=paste0(sprintf("%1.1f", pct),"%")),
+                     position=position_stack(vjust=0.5), size = 3) +
+  theme_classic() +
+   theme(legend.position = "right", axis.text.x = element_text(angle = 85, hjust = 1)) +
+  labs(title = "Sales Channel", y = "Company base %", fill = "Churn")
+
+#Interestingly, the churning customers are distributed over 5 different values for channel_sales. As well as this, the value of MISSING has a churn rate of 7.6%. MISSING indicates a missing value and was added by the team when they were cleaning the dataset. This feature could be an important feature when it comes to building our model.
+```
+
+```{r}
+#Consumption
+#Let’s see the distribution of the consumption in the last year and month. Since the consumption data is univariate, let’s use histograms to visualize their distribution.
+
+str(client_df)
+consumption <- client_df %>%
+  select(id, cons_12m, cons_gas_12m, cons_last_month, has_gas, imp_cons, churn)
+
+consumption$churn <- as.factor(recode(consumption$churn,
+                               "0" = "Retention",
+                               "1" = "Churn"))
+
+ggplot(consumption, aes(x = cons_12m, fill = churn)) +
+  geom_histogram(binwidth = 100000) +
+  scale_x_continuous(labels = comma) +
+  labs(y = "frequency", fill = "Churn")
+  
+ggplot(consumption, aes(x = cons_gas_12m, fill = churn)) +
+  geom_histogram(binwidth = 100000) +
+  scale_x_continuous(labels = comma)
+  labs(y = "frequency", fill = "Churn")
+  
+ggplot(consumption, aes(x = cons_last_month, fill = churn)) +
+  geom_histogram(binwidth = 100000) +
+  scale_x_continuous(labels = comma)
+  labs(y = "frequency", fill = "Churn")
+
+ggplot(consumption, aes(x = imp_cons, fill = churn)) +
+  geom_histogram(binwidth = 1000) +
+  labs(y = "frequency", fill = "Churn")
+
+#Clearly, the consumption data is highly positively skewed, presenting a very long right-tail towards the higher values of the distribution. The values on the higher and lower end of the distribution are likely to be outliers. We can use a standard plot to visualise the outliers in more detail. A boxplot is a standardized way of displaying the distribution based on a five number summary: - Minimum - First quartile (Q1) - Median - Third quartile (Q3) - Maximum.
+
+#It can reveal outliers and what their values are. It can also tell us if our data is symmetrical, how tightly our data is grouped and if/how our data is skewed.
+
+
+ggplot(consumption, aes(x = cons_12m)) +
+  geom_boxplot() +
+  scale_x_continuous(labels = comma)
+
+ggplot(consumption, aes(x = cons_gas_12m)) +
+  geom_boxplot() +
+  scale_x_continuous(labels = comma)
+
+ggplot(consumption, aes(x = cons_last_month)) +
+  geom_boxplot() +
+  scale_x_continuous(labels = comma)
+
+ggplot(consumption, aes(x = imp_cons)) +
+  geom_boxplot() +
+  scale_x_continuous(labels = comma)
+
+#We will deal with skewness and outliers during feature engineering in the next exercise.
+
+```
+
+```{r}
+# Forecast
+forecast <- client_df %>%
+  select(forecast_cons_12m, forecast_cons_year, forecast_discount_energy, forecast_meter_rent_12m, forecast_price_energy_off_peak, forecast_price_energy_peak, forecast_price_pow_off_peak, churn)
+
+forecast$churn <- as.factor(recode(forecast$churn,
+                                   "0" = "Retention",
+                                   "1" = "Churn"))
+
+ggplot(forecast, aes(x = forecast_cons_12m, fill = churn)) +
+  geom_histogram(binwidth = 5000) +
+  labs(y = "Frequency", fill = "Churn")
+
+ggplot(forecast, aes(x = forecast_cons_year, fill = churn)) +
+  geom_histogram(binwidth = 10000) +
+  labs(y = "Frequency", fill = "Churn")
+
+ggplot(forecast, aes(x = forecast_discount_energy, fill = churn)) +
+  geom_histogram(binwidth = 10) +
+  labs(y = "Frequency", fill = "Churn")
+
+ggplot(forecast, aes(x = forecast_meter_rent_12m, fill = churn)) +
+  geom_histogram(binwidth = 100) +
+  labs(y = "Frequency", fill = "Churn")
+
+ggplot(forecast, aes(x = forecast_price_energy_off_peak, fill = churn)) +
+  geom_histogram(binwidth = 0.01) +
+  labs(y = "Frequency", fill = "Churn")
+
+ggplot(forecast, aes(x = forecast_price_energy_peak, fill = churn)) +
+  geom_histogram(binwidth = 0.01) +
+  labs(y = "Frequency", fill = "Churn")
+
+ggplot(forecast, aes(x = forecast_price_pow_off_peak, fill = churn)) +
+  geom_histogram(binwidth = 10) +
+  labs(y = "Frequency", fill = "Churn")
+
+#Similarly to the consumption plots, we can observe that a lot of the variables are highly positively skewed, creating a very long tail for the higher values. We will make some transformations during the next exercise to correct for this skewness.
+```
+
+```{r}
+# Contract type
+contract_type <- client_df %>%
+  select("has_gas", "churn") %>%
+  group_by(has_gas) %>%
+  count(churn) %>%
+  mutate(pct = n/sum(n)*100)
+
+contract_type$churn <- factor(contract_type$churn,
+                                 levels = c(1, 0),
+                                 labels = c("Churn", "Retention"))
+
+ggplot(contract_type, aes(x = has_gas, y = pct, fill = churn)) +
+  geom_bar(position = "stack", stat = "identity") +
+   scale_y_continuous(breaks = seq(0, 100, by = 20)) +
+  geom_text(aes(label=paste0(sprintf("%1.1f", pct),"%")),
+                     position=position_stack(vjust=0.5), colour="white", size = 5) +
+  labs(title = "Churning Status", y = "Company base (%)", fill = "Churn") +
+  xlab(NULL)
+```
+
+```{r}
+# Margins
+margin <- client_df %>%
+  select(margin_gross_pow_ele, margin_net_pow_ele, net_margin)
+
+ggplot(margin, aes(margin_gross_pow_ele)) +
+  geom_boxplot()
+
+ggplot(margin, aes(margin_net_pow_ele)) +
+  geom_boxplot()
+
+ggplot(margin, aes(net_margin)) +
+  geom_boxplot()
+
+# We can see some outliers here as well which we will deal with in the next exercise.
+```
+
+```{r}
+# Subscribed Power
+power <- client_df %>%
+  select("id", "pow_max", "churn")
+
+power$churn <- factor(power$churn,
+                                 levels = c(1, 0),
+                                 labels = c("Churn", "Retention"))
+
+ggplot(power, aes(x = pow_max, fill = churn)) +
+  geom_histogram(binwidth = 10)
+```
+
+```{r}
+# Other Columns
+others <- client_df %>%
+  select("id", "nb_prod_act", "num_years_antig", "origin_up", "churn")
+
+others$churn <- factor(others$churn,
+                                 levels = c(1, 0),
+                                 labels = c("Churn", "Retention"))
+
+others %>%
+  group_by(nb_prod_act) %>%
+  count(churn) %>%
+  mutate(pct = n/sum(n)*100) %>%
+  ggplot(aes(x = nb_prod_act, y = pct, fill = churn)) +
+  geom_bar(position = "stack", stat = "identity") +
+  scale_y_continuous(breaks = seq(0, 100, by = 20)) +
+  scale_x_continuous(breaks = seq(0, 50, by = 1)) +
+  geom_text(aes(label=paste0(sprintf("%1.1f", pct))),
+                     position=position_stack(vjust=0.5), colour="black", size = 3) +
+  labs(title = "Number of Products", y = "Company base (%)", fill = "Churn") +
+  xlab(NULL)
+
+
+others %>%
+  group_by(num_years_antig) %>%
+  count(churn) %>%
+  mutate(pct = n/sum(n)*100) %>%
+  ggplot(aes(x = num_years_antig, y = pct, fill = churn)) +
+  geom_bar(position = "stack", stat = "identity") +
+  scale_y_continuous(breaks = seq(0, 100, by = 20)) +
+  scale_x_continuous(breaks = seq(0, 50, by = 1)) +
+  geom_text(aes(label=paste0(sprintf("%1.1f", pct))),
+                     position=position_stack(vjust=0.5), colour="black", size = 3) +
+  labs(title = "Number of Years", y = "Company base (%)", fill = "Churn") +
+  xlab(NULL)
+
+others %>%
+  group_by(origin_up) %>%
+  count(churn) %>%
+  mutate(pct = n/sum(n)*100) %>%
+  ggplot(aes(x = origin_up, y = pct, fill = churn)) +
+  geom_bar(position = "stack", stat = "identity") +
+  scale_y_continuous(breaks = seq(0, 100, by = 20)) +
+  geom_text(aes(label=paste0(sprintf("%1.1f", pct))),
+                     position=position_stack(vjust=0.5), colour="black", size = 3) +
+  theme_classic() +
+   theme(legend.position = "right", axis.text.x = element_text(angle = 85, hjust = 1)) +
+  labs(title = "Code of Electricity Campaign the Customer First Subscribed to", y = "Company base (%)", fill = "Churn") +
+  xlab(NULL)
+```
+
+```{r}
+# Now that we have explored the data, it's time to investigate whether price sensitivity has some influence on churn. First we need to define exactly what is price sensitivity.
+
+# Since we have the consumption data for each of the companies for the year of 2015, we will create new features to measure "price sensitivity" using the average of the year, the last 6 months and the last 3 months
+
+# Transform date columns to datetime type
+client_df$date_activ <- as.Date(client_df$date_activ)
+client_df$date_end <- as.Date(client_df$date_end)
+client_df$date_modif_prod <- as.Date(client_df$date_modif_prod)
+client_df$date_renewal <- as.Date(client_df$date_renewal)
+price_df$price_date <- as.Date(price_df$price_date)
+
+# Create mean average data
+mean_year <- price_df %>%
+  group_by(id) %>%
+  summarize_if(is.numeric, mean)
+
+mean_6m <- price_df %>%
+  filter(price_date > "2015-06-01") %>%
+  group_by(id) %>%
+  summarize_if(is.numeric, mean)
+
+mean_3m <- price_df %>%
+  filter(price_date > "2015-10-01") %>%
+  group_by(id) %>%
+  summarize_if(is.numeric, mean)
+
+mean_year <- mean_year %>%
+  rename(
+    mean_year_price_p1_var = price_off_peak_var,
+    mean_year_price_p2_var = price_peak_var,
+    mean_year_price_p3_var = price_mid_peak_var,
+    mean_year_price_p1_fix = price_off_peak_fix,
+    mean_year_price_p2_fix = price_peak_fix,
+    mean_year_price_p3_fix = price_mid_peak_fix
+    ) %>%
+  mutate(
+    mean_year_price_p1 = mean_year_price_p1_var + mean_year_price_p1_fix,
+    mean_year_price_p2 = mean_year_price_p2_var + mean_year_price_p2_fix,
+    mean_year_price_p3 = mean_year_price_p3_var + mean_year_price_p3_fix
+    )
+
+mean_6m <- mean_6m %>%
+  rename(
+    mean_6m_price_p1_var = price_off_peak_var,
+    mean_6m_price_p2_var = price_peak_var,
+    mean_6m_price_p3_var = price_mid_peak_var,
+    mean_6m_price_p1_fix = price_off_peak_fix,
+    mean_6m_price_p2_fix = price_peak_fix,
+    mean_6m_price_p3_fix = price_mid_peak_fix
+    ) %>%
+  mutate(
+    mean_6m_price_p1 = mean_6m_price_p1_var + mean_6m_price_p1_fix,
+    mean_6m_price_p2 = mean_6m_price_p2_var + mean_6m_price_p2_fix,
+    mean_6m_price_p3 = mean_6m_price_p3_var + mean_6m_price_p3_fix
+    )
+
+mean_3m <- mean_3m %>%
+  rename(
+    mean_3m_price_p1_var = price_off_peak_var,
+    mean_3m_price_p2_var = price_peak_var,
+    mean_3m_price_p3_var = price_mid_peak_var,
+    mean_3m_price_p1_fix = price_off_peak_fix,
+    mean_3m_price_p2_fix = price_peak_fix,
+    mean_3m_price_p3_fix = price_mid_peak_fix
+    ) %>%
+  mutate(
+    mean_3m_price_p1 = mean_3m_price_p1_var + mean_3m_price_p1_fix,
+    mean_3m_price_p2 = mean_3m_price_p2_var + mean_3m_price_p2_fix,
+    mean_3m_price_p3 = mean_3m_price_p3_var + mean_3m_price_p3_fix
+    )
+
+price_features <- merge(mean_year, mean_6m, by = "id") %>%
+  merge(mean_3m, by = "id")
+
+
+price_analysis <- merge(price_features, client_df[c("id", "churn")], by = "id")
+
+merged_data <- inner_join(client_df[-26], price_analysis, by = "id")
+
+write.csv(merged_data, file = "clean_data_after_eda.csv")
+```
+
