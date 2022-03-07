@@ -1,0 +1,288 @@
+```{r}
+library(tidyverse)
+library(lubridate)
+```
+
+```{r}
+df <- read_csv("clean_data_after_eda.csv")
+price_df <- read_csv("price_data.csv")
+df[1] <- NULL
+```
+
+```{r}
+# Feature Engineering
+# Difference between off-peak prices in December and preceding January
+# Group off-peak prices by companies and month
+
+monthly_price_by_id <- price_df %>%
+  group_by(id, price_date) %>%
+  summarise_at(.vars = c("price_off_peak_var", "price_off_peak_fix"),
+               .funs = mean)
+
+# Get January and December prices
+jan_prices <- monthly_price_by_id %>%
+  filter(price_date == "2015-01-01")
+
+dec_prices <- monthly_price_by_id %>%
+  filter(price_date == "2015-12-01") %>%
+  rename(price_off_peak_var_dec = price_off_peak_var,
+         price_off_peak_fix_dec = price_off_peak_fix)
+
+# Calculate the difference
+
+diff <- inner_join(dec_prices, jan_prices[-2], by = "id")
+
+diff$offpeak_diff_dec_january_energy <- diff$price_off_peak_var_dec - diff$price_off_peak_var
+
+diff$offpeak_diff_dec_january_power <- diff$price_off_peak_fix_dec - diff$price_off_peak_fix
+
+diff <- diff[c(1, 7, 8)]
+
+df <- inner_join(df, diff, by = "id")
+
+```
+
+```{r}
+# Average price changes across periods
+# the average price changes across individual periods, instead of the entire year.
+
+# Aggregate average prices per period by company
+mean_prices <- price_df %>%
+  group_by(id) %>%
+  summarize_at(.vars = c("price_off_peak_var",
+                         "price_peak_var",
+                         "price_mid_peak_var",
+                         "price_off_peak_fix",
+                         "price_peak_fix",
+                         "price_mid_peak_fix"),
+               .funs = mean)
+
+# Calculate the mean difference between consecutive periods
+
+mean_prices$off_peak_peak_var_mean_diff = mean_prices$price_off_peak_var - mean_prices$price_peak_var
+
+mean_prices$peak_mid_peak_var_mean_diff = mean_prices$price_peak_var - mean_prices$price_mid_peak_var
+
+mean_prices$off_peak_mid_peak_var_mean_diff = mean_prices$price_off_peak_var - mean_prices$price_mid_peak_var
+
+mean_prices$off_peak_peak_fix_mean_diff = mean_prices$price_off_peak_fix - mean_prices$price_peak_fix
+
+mean_prices$peak_mid_peak_fix_mean_diff = mean_prices$price_peak_fix - mean_prices$price_mid_peak_fix
+
+mean_prices$off_peak_mid_peak_fix_mean_diff = mean_prices$price_off_peak_fix - mean_prices$price_mid_peak_fix
+
+df <- inner_join(df, mean_prices[c('id',
+                              'off_peak_peak_var_mean_diff',
+                              'peak_mid_peak_var_mean_diff',
+                              'off_peak_mid_peak_var_mean_diff',
+                              'off_peak_peak_fix_mean_diff',
+                              'peak_mid_peak_fix_mean_diff',
+                              'off_peak_mid_peak_fix_mean_diff')], by = "id")
+
+# This feature may be useful because it adds more granularity to the existing feature that my colleague found to be useful. 
+
+# Instead of looking at differences across an entire year, I have now created features that look at mean average price differences across different time periods (off_peak, peak, mid_peak). 
+
+# The dec-jan feature may reveal macro patterns that occur over an entire year, whereas inter-time-period features may reveal patterns on a micro scale between months.
+```
+
+```{r}
+# Max price changes across periods and months
+# Maximum change in prices across periods and months
+
+# Aggregate average prices per period by company
+mean_prices_by_month <- price_df %>%
+  group_by(id, price_date) %>%
+  summarize_at(.vars = c("price_off_peak_var",
+                         "price_peak_var",
+                         "price_mid_peak_var",
+                         "price_off_peak_fix",
+                         "price_peak_fix",
+                         "price_mid_peak_fix"),
+               .funs = mean)
+
+# Calculate the mean difference between consecutive periods
+mean_prices_by_month$off_peak_peak_var_mean_diff = mean_prices_by_month$price_off_peak_var - mean_prices_by_month$price_peak_var
+
+mean_prices_by_month$peak_mid_peak_var_mean_diff = mean_prices_by_month$price_peak_var - mean_prices_by_month$price_mid_peak_var
+
+mean_prices_by_month$off_peak_mid_peak_var_mean_diff = mean_prices_by_month$price_off_peak_var - mean_prices_by_month$price_mid_peak_var
+
+mean_prices_by_month$off_peak_peak_fix_mean_diff = mean_prices_by_month$price_off_peak_fix - mean_prices_by_month$price_peak_fix
+
+mean_prices_by_month$peak_mid_peak_fix_mean_diff = mean_prices_by_month$price_peak_fix - mean_prices_by_month$price_mid_peak_fix
+
+mean_prices_by_month$off_peak_mid_peak_fix_mean_diff = mean_prices_by_month$price_off_peak_fix - mean_prices_by_month$price_mid_peak_fix
+
+# Calculate the maximum monthly difference across time periods
+max_diff_across_periods_months <- mean_prices_by_month %>%
+  group_by(id) %>%
+  summarize_at(.vars = c("off_peak_peak_var_mean_diff",
+                         "peak_mid_peak_var_mean_diff",
+                         "off_peak_mid_peak_var_mean_diff",
+                         "off_peak_peak_fix_mean_diff",
+                         "peak_mid_peak_fix_mean_diff",
+                         "off_peak_mid_peak_fix_mean_diff"),
+               .funs = max) %>%
+  rename(
+    off_peak_peak_var_max_monthly_diff = off_peak_peak_var_mean_diff,
+    peak_mid_peak_var_max_monthly_diff = peak_mid_peak_var_mean_diff,
+    off_peak_mid_peak_var_max_monthly_diff = off_peak_mid_peak_var_mean_diff,
+    off_peak_peak_fix_max_monthly_diff = off_peak_peak_fix_mean_diff,
+    peak_mid_peak_fix_max_monthly_diff = peak_mid_peak_fix_mean_diff,
+    off_peak_mid_peak_fix_max_monthly_diff = off_peak_mid_peak_fix_mean_diff
+    )
+
+df <- inner_join(df, max_diff_across_periods_months, by = "id")
+
+# I thought that calculating the maximum price change between months and time periods would be a good feature to create because I was trying to think from the perspective of a PowerCo client.
+
+# As a Utilities customer, there is nothing more annoying than sudden price changes between months, and a large increase in prices within a short time span would be an influencing factor in causing me to look at other utilities providers for a better deal. 
+
+# Since we are trying to predict churn for this use case, I thought this would be an interesting feature to include.
+
+```
+
+```{r}
+df$tenure <- interval(ymd(df$date_activ), ymd(df$date_end)) %/% years(1)
+
+df %>%
+  group_by(tenure) %>%
+  summarize(churn = mean(churn)) %>%
+  arrange(desc(churn))
+
+# We can see that companies who have only been a client for 4 or less years are much more likely to churn compared to companies that have been a client for longer.  
+# Another insight is that getting a customer to over 4 months tenure is actually a large milestone with respect to keeping them as a long term customer.
+
+# This is an interesting feature to keep for modelling because clearly how long you've been a client, has a influence on the chance of a client churning.
+```
+
+```{r}
+# Transforming dates into months
+
+# months_activ = Number of months active until reference date (Jan 2016)
+# months_to_end = Number of months of the contract left until reference date (Jan 2016)
+# months_modif_prod = Number of months since last modification until reference date (Jan 2016)
+# months_renewal = Number of months since last renewal until reference date (Jan 2016)
+
+reference_date <- as.Date("2016-01-01")
+df$months_activ <- interval(ymd(df$date_activ), ymd(reference_date)) %/% months(1)
+
+df$months_to_end <- interval(ymd(reference_date), ymd(df$date_end)) %/% months(1)
+
+df$months_modif_prod <- interval(ymd(df$date_modif_prod), ymd(reference_date)) %/% months(1)
+
+df$months_renewal <- interval(ymd(df$date_renewal), ymd(reference_date)) %/% months(1)
+
+# Dates as a datetime object are not useful for a predictive model, so we needed to use the datetimes to create some other features that may hold some predictive power.
+
+# Using intuition, you could assume that a client who has been an active client of PowerCo for a longer amount of time may have more loyalty to the brand and is more likely to stay. Whereas a newer client may be more volatile. Hence the addition of the months_activ feature.
+
+# As well as this, if we think from the perspective of a client with PowerCo, if you're coming toward the end of your contract with PowerCo your thoughts could go a few ways. You could be looking for better deals for when your contract ends, or you might want to see out your contract and sign another one. One the other hand if you've only just joined, you may have a period where you're allowed to leave if you're not satisfied. Furthermore, if you're in the middle of your contract, their may be charges if you wanted to leave, deterring clients from churning mid-way through their agreement. So, I think months_to_end will be an interesting feature because it may reveal patterns and behaviours about timing of churn.
+
+# My belief is that if a client has made recent updates to their contract, they are more likely to be satisfied or at least they have received a level of customer service to update or change their existing services. I believe this to be a positive sign, they are an engaged customer, and so I believe months_modif_prod will be an interesting feature to include because it shows the degree of how 'engaged' a client is with PowerCo.
+
+# Finally the number of months since a client last renewed a contract I believe will be an interesting feature because once again, it shows the degree to which that client is engaged. It also goes a step further than just engagement, it shows a level of commitment if a client renews their contract. For this reason, I believe months_renewal will be a good feature to include.
+
+
+
+# We no longer need the datetime columns that we used for feature engineering, so we can drop them
+df$date_activ <- NULL
+df$date_end <- NULL
+df$date_modif_prod <- NULL
+df$date_renewal <- NULL
+
+```
+
+```{r}
+write.csv(df, "data_after_feature_engineering.csv")
+```
+
+
+```{r}
+# Transforming Boolean data
+
+# has_gas
+
+df$has_gas <- factor(df$has_gas,
+                     levels = c("TRUE", "FALSE"),
+                     labels = c(1, 0))
+
+df$churn <- factor(df$churn,
+                     levels = c(0, 1))
+
+df %>%
+  group_by(has_gas) %>%
+  summarize(churn = mean(churn))
+
+# If a customer also buys gas from PowerCo, it shows that they have multiple products and are a loyal customer to the brand. Hence, it is no surprise that customers who do not buy gas are almost 2% more likely to churn than customers who also buy gas from PowerCo. Hence, this is a useful feature.
+
+```
+
+```{r}
+# Transforming categorical data
+# channel_sales
+df %>%
+  count(channel_sales) %>%
+  arrange(desc(n))
+
+df$channel_sales <- factor(df$channel_sales,
+                           levels = c("foosdfpfkusacimwkcsosbicdxkicaua",
+                                      "MISSING",
+                                      "lmkebamcaaclubfxadlmueccxoimlema",
+                                      "usilxuppasemubllopkaafesmlibmsdf",
+                                      "ewpakwlliwisiwduibdlfmalxowmwpci",
+                                      "sddiedcslfslkckwlfkdpoeeailfpeds",
+                                      "epumfxlbckeskwekxbiuasklxalciiuu",
+                                      "fixdbufsefwooaasfcxdxadsiekoceaa"),
+                           labels = c(1, 2, 3, 4, 5, 6, 7, 8))
+
+# origin_up
+df %>%
+  count(origin_up) %>%
+  arrange(desc(n))
+
+df$origin_up <- factor(df$origin_up,
+                       levels = c("lxidpiddsbxsbosboudacockeimpuepw",
+                                  "kamkkxfxxuwbdslkwifmmcsiusiuosws",
+                                  "ldkssxwpmemidmecebumciepifcamkci",
+                                  "MISSING",
+                                  "usapbepcfoloekilkwsdiboslwaxobdp",
+                                  "ewxeelcelemmiwuafmddpobolfuxioce"),
+                       labels = c(1, 2, 3, 4, 5, 6))
+  
+```
+
+
+```{r}
+# Modelling
+# Remove id column
+df[1] = NULL
+# Splitting the dataset into the training set and test set
+library(caTools)
+set.seed(123)
+split = sample.split(df$churn, SplitRatio = 0.75)
+training_set <- subset(df, split == TRUE)
+test_set <- subset(df, split == FALSE)
+
+# Feature scaling
+training_set[c(-1, -12, -19, -48)] <- scale(training_set[c(-1, -12, -19, -48)])
+test_set[c(-1, -12, -19, -48)] <- scale(test_set[c(-1, -12, -19, -48)])
+
+
+# Fitting Random Forest Classification to the Training set
+
+library(randomForest)
+set.seed(123)
+classifier = randomForest(x =  training_set[-48],
+                          y = training_set$churn,
+                          ntree = 50)
+
+# Predicting the Test set results
+y_pred = predict(classifier, newdata = test_set[-48])
+
+# Making the Confusion Matrix
+
+library(caret)
+confusionMatrix(test_set$churn, y_pred)
+```
